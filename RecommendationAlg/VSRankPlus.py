@@ -11,14 +11,16 @@ from sklearn import metrics
 from sklearn import grid_search
 from sklearn.cross_validation import StratifiedKFold
 from Eval.Evaluation import *
+import random
 
-class VSRank(BaseEstimator):
+class VSRankPlus(BaseEstimator):
 
     def __init__(self, neighbornum=5, n=5):
         print 'vsrank begin'
         self.neighbornum = neighbornum
         self.similarity = Similarity('COSINE')
         self.n = n
+        self.sample_rate = 5
 
     def predict(self,testSamples):
         recList = []
@@ -28,9 +30,11 @@ class VSRank(BaseEstimator):
         return recList
 
     def fit(self, trainSamples, trainTargets):
-        self.dataModel = MemeryDataModel(trainSamples, trainTargets, isRating=True)
+        self.dataModel = MemeryDataModel(trainSamples, trainTargets, hasTimes=True)
         usersNum = self.dataModel.getUsersNum()
         itemsNum = self.dataModel.getItemsNum()
+        all_item_set = set(range(itemsNum))
+
         self.T = [{} for i in range(usersNum)]
         for uid in range(usersNum):
             purchased_items = self.dataModel.getItemIDsFromUid(uid)
@@ -45,9 +49,12 @@ class VSRank(BaseEstimator):
                     else:
                         continue
                     self.T[uid][key] = 1
-
-        for uid in range(usersNum):
-            print self.dataModel.getUserByUid(uid), len(self.T[uid])
+            # for i in purchased_items:
+            #     purchased_items = self.dataModel.getItemIDsFromUid(uid)
+                # unpurchased_items = random.sample(all_item_set.difference(purchased_items), self.sample_rate)
+                # for j in unpurchased_items:
+                #     key = str(i) + " " + str(j)
+                #     self.T[uid][key] = 1
 
         idf = {}
         pair_sum = [[0]*itemsNum for i in range(itemsNum)]
@@ -68,7 +75,11 @@ class VSRank(BaseEstimator):
             for t, times in self.T[uid].iteritems():
                 i1, i2 = t.split(" ")
                 diff = self.dataModel.getRating(uid, int(i1))-self.dataModel.getRating(uid, int(i2))
+                # if diff != 1:
+                #     print 'error!'
                 tf = log2(1+abs(diff))
+                if diff < 0:
+                    tf = -tf
                 W[uid][t] = tf * idf[t]
 
         self.simiMatrix = np.zeros((usersNum, usersNum))
@@ -82,15 +93,11 @@ class VSRank(BaseEstimator):
         m1 = 0.0
         m2 = 0.0
         for k, v in dict1.iteritems():
-            m1 += v*v
-            i1, i2 = k.split(' ')
-            k_ = i2 + ' ' + i1
+            m1 += v**2
             if dict2.has_key(k):
                 product += v * dict2[k]
-            elif dict2.has_key(k_):
-                product -= v * dict2[k_]
         for k, v in dict2.iteritems():
-            m2 += v*v
+            m2 += v**2
         if product == 0:
             return 0
         else:
@@ -103,7 +110,6 @@ class VSRank(BaseEstimator):
     def neighborhood(self, userID):
         neighbors = np.argsort(np.array(self.simiMatrix[userID]))[-1:-self.neighbornum-1:-1]
         return neighbors
-
 
     def predict_single(self, userID, itemID):
         rating = 0.0
@@ -215,16 +221,13 @@ class VSRank(BaseEstimator):
         for u in user_unique:
             uTrueIndex = np.argwhere(np.array(testSamples)[:,0] == u)[:,0]
             #true = [self.dataModel.getIidByItem(i) for i in list(np.array(testSamples)[uTrueIndex][:,1])]
-            uTrueItem = list(np.array(testSamples)[uTrueIndex][:,1])
-            uTrueRating = list(np.array(trueLabels)[uTrueIndex])
-            true = [x for (x, y) in sorted(zip(uTrueItem, uTrueRating), lambda a, b: cmp(a[1], b[1]), reverse=True)[:self.n]]
+            true = list(np.array(testSamples)[uTrueIndex][:,1])
             trueList.append(true)
             pre = self.recommend(u)
             recommendList.append(pre)
         e = Eval()
         result = e.evalAll(recommendList, trueList)
-
-        print 'vsrank result:'+'('+str(self.get_params())+')'+str(result)
+        print 'vsrank result:'+'('+str(self.get_params())+')'+str((result)['F1'])
         return (result)['F1']
 
 if __name__ == '__main__':

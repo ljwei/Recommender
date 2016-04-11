@@ -23,10 +23,12 @@ class App:
     def __init__(self):
         self.config = Config()
         self.config.from_ini('../Application/conf')
-        self.data = pd.read_csv('../Data/bbg/transaction.csv')
+        # self.data = pd.read_csv('../Data/ml-1m/newtransaction.csv')
+        self.data = pd.read_csv('../Data/bbg/newtransaction.csv')
         self.samples = [[int(i[0]), int(i[1])] for i in self.data.values[:,0:2]]
-        self.targets = [1 for i in self.samples]
         self.labels = [int(i[0]) for i in self.data.values[:,0:2]]
+        # self.targets = [int(i[2]) for i in self.data.values]
+        self.targets = [1 for i in self.samples]
         self.Lock = Lock()
         m = Manager()
         self.result = m.list()
@@ -76,7 +78,7 @@ class App:
     def best_alg(self):
         print 'Selecting best Alg'
         self.fit()
-        scores = np.array(self.result[1:3])[:,1]
+        scores = np.array(self.result[1::3])[:,1]
         print scores
         index = np.argwhere(scores == scores.max())[0][0]
         best_method = self.result[3*index]
@@ -93,6 +95,20 @@ class App:
             recommendList.append(alg.recommend(u))
         return recommendList
 
+    def recommendAll(self):
+        print 'Recommending'
+        # bestMethod = self.best_alg()
+        # alg = AlgFactory.create(bestMethod)
+        alg = AlgFactory.create('ItemCF')
+        uids = list(set(np.array(self.samples)[:,0]))
+        alg.fit(self.samples, self.targets)
+        recommendList = []
+        for u in uids:
+            rec = alg.recommend(u)
+            rec.insert(0, u)
+            recommendList.append(rec)
+        t = pd.DataFrame(recommendList)
+        t.to_csv('rec_list')
 
 if __name__ == '__main__':
 
@@ -101,8 +117,5 @@ if __name__ == '__main__':
     uids = [1]
     print app.recommend(uids)
     '''
+    # app.recommendAll()
     app.fit()
-
-
-
-
